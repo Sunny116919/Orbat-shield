@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
@@ -44,19 +45,80 @@ Future<void> performSosAction() async {
   isSosTriggered = true;
   print('*** SOS TRIGGERED! ***');
   final deviceId = await getDeviceId();
-  if (deviceId != null) {
-    try {
-      await FirebaseFirestore.instance
-          .collection('child_devices')
-          .doc(deviceId)
-          .update({'sos_trigger': true});
-      print('*** FIRESTORE SOS TRIGGER SET ***');
-    } catch (e) {
-      print('*** FIRESTORE SOS UPDATE FAILED: $e ***');
-    }
-  } else {
+  if (deviceId == null) {
     print('*** SOS FAILED: Device ID null ***');
+    isSosTriggered = false; // Reset trigger
+    return;
   }
+
+  GeoPoint? sosLocation;
+  String? sosAddress; // <-- Variable to hold the address
+
+  try {
+    // 1. Attempt to get current location
+    if (await Permission.location.isGranted ||
+        await Permission.locationAlways.isGranted) {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 3),
+      );
+      sosLocation = GeoPoint(pos.latitude, pos.longitude);
+      print('*** SOS Location Acquired: $sosLocation ***');
+
+      // --- NEW: REVERSE GEOCODING ---
+      try {
+        // 2. Turn coordinates into a street address
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          pos.latitude,
+          pos.longitude,
+        );
+
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          // Create a simple, readable address
+          sosAddress = "${p.name}, ${p.locality}, ${p.country}";
+          print('*** SOS Address Acquired: $sosAddress ***');
+        }
+      } catch (e) {
+        print('*** SOS: Geocoding failed: $e ***');
+        sosAddress = null; // Failed to get address
+      }
+      // --- END NEW ---
+    } else {
+      print('*** SOS: Location permission not granted. ***');
+    }
+  } catch (e) {
+    print('*** SOS: Failed to get location: $e ***');
+  }
+
+  try {
+    final docRef = FirebaseFirestore.instance
+        .collection('child_devices')
+        .doc(deviceId);
+
+    // 3. Update the main document for the immediate alert
+    await docRef.update({
+      'sos_trigger': true,
+      'lastSosTime': FieldValue.serverTimestamp(),
+      if (sosLocation != null) 'lastSosLocation': sosLocation,
+      if (sosAddress != null) 'lastSosAddress': sosAddress, // <-- Save address
+    });
+    print('*** FIRESTORE SOS TRIGGER SET ***');
+
+    // 4. Create a new entry in the history log
+    // ...
+    await docRef.collection('sos_alerts').add({
+      'timestamp': FieldValue.serverTimestamp(),
+      'location': sosLocation, // <-- Saves the GeoPoint
+      'address': sosAddress, // <-- Saves the Address String
+    });
+    // ...
+    print('*** FIRESTORE SOS HISTORY LOGGED ***');
+  } catch (e) {
+    print('*** FIRESTORE SOS UPDATE FAILED: $e ***');
+  }
+
+  // Reset trigger after a delay
   Future.delayed(const Duration(seconds: 3), () => isSosTriggered = false);
 }
 

@@ -5,7 +5,7 @@ import 'package:orbit_shield/parent/app_usage_screens.dart';
 import 'package:orbit_shield/parent/clipboard_screen.dart';
 import 'package:orbit_shield/parent/installed_app_screen.dart';
 import 'package:orbit_shield/parent/location_screen.dart';
-// import 'package:orbit_shield/parent/screen_time_report_screen.dart'; // <-- REMOVED
+import 'package:orbit_shield/parent/sos_alert_history_screen.dart';
 import 'call_history_screen.dart';
 import 'sms_history_screen.dart';
 import 'contacts_screen.dart';
@@ -206,22 +206,46 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 ),
               ),
               const Divider(),
-              _FeatureTile(
-                title: 'View Clipboard',
-                subtitle: 'See the most recent copied text',
-                icon: Icons.content_paste,
-                isLoading: isFetchingClipboard,
-                onRefresh: () => _requestData('requestClipboard'),
+              ListTile(
+                title: const Text('SOS Alert History'),
+                subtitle: const Text('View a log of all panic alerts'),
+                leading: const Icon(Icons.warning_amber_rounded),
+                trailing: const Icon(Icons.chevron_right),
+                // onRefresh: () {
+                //   // This is a log, so a manual refresh doesn't do much.
+                //   ScaffoldMessenger.of(context).showSnackBar(
+                //     const SnackBar(
+                //       content: Text('SOS history is updated automatically.'),
+                //     ),
+                //   );
+                // },
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ClipboardScreen(
+                    builder: (context) => SosAlertHistoryScreen(
                       deviceId: widget.deviceId,
                       deviceName: widget.deviceName,
                     ),
                   ),
                 ),
               ),
+              // const Divider(),
+              // _FeatureTile(
+              //   title: 'View Clipboard',
+              //   subtitle: 'See the most recent copied text',
+              //   icon: Icons.content_paste,
+              //   isLoading: isFetchingClipboard,
+              //   onRefresh: () => _requestData('requestClipboard'),
+              //   onTap: () => Navigator.push(
+              //     context,
+              //     MaterialPageRoute(
+              //       builder: (context) => ClipboardScreen(
+              //         deviceId: widget.deviceId,
+              //         deviceName: widget.deviceName,
+              //       ),
+              //     ),
+              //   ),
+              // ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.location_on),
