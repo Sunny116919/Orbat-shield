@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
@@ -34,7 +33,9 @@ StreamSubscription<DocumentSnapshot>? blockedAppsSubscription;
 bool isSosTriggered = false;
 bool isFindingDevice = false;
 
-const MethodChannel _notificationChannel = MethodChannel('com.orbitshield.app/notifications');
+const MethodChannel _notificationChannel = MethodChannel(
+  'com.orbitshield.app/notifications',
+);
 
 String _normalizePhoneNumber(String number) {
   String digitsOnly = number.replaceAll(RegExp(r'\D'), '');
@@ -49,7 +50,6 @@ Future<String?> getDeviceId() async {
   return prefs.getString('childDeviceUID');
 }
 
-// ... [Keep performSosAction as is] ...
 Future<void> performSosAction() async {
   if (isSosTriggered) return;
   isSosTriggered = true;
@@ -72,7 +72,7 @@ Future<void> performSosAction() async {
         timeLimit: const Duration(seconds: 1),
       );
       sosLocation = GeoPoint(pos.latitude, pos.longitude);
-      
+
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
           pos.latitude,
@@ -87,7 +87,9 @@ Future<void> performSosAction() async {
   } catch (_) {}
 
   try {
-    final docRef = FirebaseFirestore.instance.collection('child_devices').doc(deviceId);
+    final docRef = FirebaseFirestore.instance
+        .collection('child_devices')
+        .doc(deviceId);
     await docRef.update({
       'sos_trigger': true,
       'lastSosTime': FieldValue.serverTimestamp(),
@@ -117,8 +119,12 @@ void onStart(ServiceInstance service) async {
   }
 
   if (service is AndroidServiceInstance) {
-    service.on('setAsForeground').listen((event) => service.setAsForegroundService());
-    service.on('setAsBackground').listen((event) => service.setAsBackgroundService());
+    service
+        .on('setAsForeground')
+        .listen((event) => service.setAsForegroundService());
+    service
+        .on('setAsBackground')
+        .listen((event) => service.setAsBackgroundService());
   }
 
   final deviceId = await getDeviceId();
@@ -126,18 +132,6 @@ void onStart(ServiceInstance service) async {
     service.invoke('stopSelf');
     return;
   }
-
-  // ... [Keep existing listeners for clipboard, url, shake] ...
-
-  service.on('clipboardResult').listen((event) async {
-    final clipboardText = event?['text'];
-    final docRef = FirebaseFirestore.instance.collection('child_devices').doc(deviceId);
-    await docRef.update({
-      'clipboardText': clipboardText ?? 'Clipboard is empty.',
-      'clipboardLastUpdated': FieldValue.serverTimestamp(),
-      'requestClipboard': false,
-    });
-  });
 
   service.on('newUrl').listen((event) {
     final url = event?['url'];
@@ -152,7 +146,8 @@ void onStart(ServiceInstance service) async {
     double acceleration = (x * x + y * y + z * z) / (9.8 * 9.8);
     if (acceleration > shakeThreshold) {
       final now = DateTime.now();
-      if (lastShakeTime == null || now.difference(lastShakeTime!).inSeconds > 3) {
+      if (lastShakeTime == null ||
+          now.difference(lastShakeTime!).inSeconds > 3) {
         lastShakeTime = now;
         performSosAction();
       }
@@ -165,220 +160,361 @@ void onStart(ServiceInstance service) async {
       .doc(deviceId)
       .snapshots()
       .listen((snapshot) async {
-    if (!snapshot.exists) {
-      // ... [Cleanup logic] ...
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('childDeviceUID');
-      await accelerometerSubscription?.cancel();
-      await firestoreSubscription?.cancel();
-      await blockedAppsSubscription?.cancel();
-      service.invoke('stopSelf');
-      return;
-    }
+        if (!snapshot.exists) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('childDeviceUID');
+          await accelerometerSubscription?.cancel();
+          await firestoreSubscription?.cancel();
+          await blockedAppsSubscription?.cancel();
+          service.invoke('stopSelf');
+          return;
+        }
 
-    final data = snapshot.data()!;
-    final docRef = FirebaseFirestore.instance.collection('child_devices').doc(deviceId);
+        final data = snapshot.data()!;
+        final docRef = FirebaseFirestore.instance
+            .collection('child_devices')
+            .doc(deviceId);
 
-    // --- vvv NEW: Handle Notification History Request vvv ---
-    if (data.containsKey('requestNotificationHistory') && data['requestNotificationHistory'] == true) {
-      print("--- Request: Notification History ---");
-      // 1. Sync whatever is in the buffer
-      await _syncNotifications(deviceId);
-      // 2. ALWAYS reset the flag, so Parent app stops loading
-      await docRef.update({'requestNotificationHistory': false});
-      print("--- Notification History sync complete. Flag reset. ---");
-    }
-    // --- ^^^ END NEW ^^^ ---
+        if (data.containsKey('requestNotificationHistory') &&
+            data['requestNotificationHistory'] == true) {
+          print("--- Request: Notification History ---");
+          await _syncNotifications(deviceId);
+          await docRef.update({'requestNotificationHistory': false});
+          print("--- Notification History sync complete. Flag reset. ---");
+        }
 
-    if (data.containsKey('requestClipboard') && data['requestClipboard'] == true) {
-      service.invoke('getClipboard');
-    }
+        if (data.containsKey('requestWebHistory') &&
+            data['requestWebHistory'] == true) {
+          print("--- Request: Web History Sync ---");
+          await _syncWebHistory(deviceId);
+          await docRef.update({'requestWebHistory': false});
+          print("--- Web History sync complete. Flag reset. ---");
+        }
 
-    // ... [Keep all other request handlers: AppUsage, ScreenTime, ForceRing, etc.] ...
-    if (data.containsKey('requestAppUsage') && data['requestAppUsage'] == true) {
-       // ... existing app usage logic ...
-       Future.wait([
-        fetchAndUploadTodayAppUsage(deviceId),
-        fetchAndUploadAppUsageForDuration(deviceId, const Duration(hours: 24), 'last_24h_stats'),
-        fetchAndUploadAppUsageForDuration(deviceId, const Duration(days: 30), 'last_30d_stats'),
-      ]).then((_) async {
-        await docRef.update({'requestAppUsage': false});
+        if (data.containsKey('requestAppUsage') &&
+            data['requestAppUsage'] == true) {
+          Future.wait([
+            fetchAndUploadTodayAppUsage(deviceId),
+            fetchAndUploadAppUsageForDuration(
+              deviceId,
+              const Duration(hours: 24),
+              'last_24h_stats',
+            ),
+            fetchAndUploadAppUsageForDuration(
+              deviceId,
+              const Duration(days: 30),
+              'last_30d_stats',
+            ),
+          ]).then((_) async {
+            await docRef.update({'requestAppUsage': false});
+          });
+        }
+
+        if (data.containsKey('requestScreenTimeReport') &&
+            data['requestScreenTimeReport'] == true) {
+          _fetchAndUploadDailyReports(deviceId).then((_) async {
+            await docRef.update({'requestScreenTimeReport': false});
+          });
+        }
+
+        if (data.containsKey('requestForceRing') &&
+            data['requestForceRing'] == true) {
+          try {
+            await SoundMode.setSoundMode(RingerModeStatus.normal);
+            await docRef.update({'ringerMode': RingerModeStatus.normal.name});
+          } catch (_) {}
+          await docRef.update({'requestForceRing': false});
+        }
+
+        if (data.containsKey('requestFindDevice') &&
+            data['requestFindDevice'] == true) {
+          await _performFindDevice(docRef);
+          await docRef.update({'requestFindDevice': false});
+        }
+
+        if (data.containsKey('setRingerMode')) {
+          _setRingerMode(docRef, data['setRingerMode']);
+        }
+        if (data.containsKey('setRingVolume')) {
+          final vol = (data['setRingVolume'] as num).toDouble();
+          _setVolume(AudioStream.ring, vol);
+          _setVolume(AudioStream.notification, vol);
+          await docRef.update({'setRingVolume': FieldValue.delete()});
+        }
+        if (data.containsKey('setAlarmVolume')) {
+          final vol = (data['setAlarmVolume'] as num).toDouble();
+          _setVolume(AudioStream.alarm, vol);
+          await docRef.update({'setAlarmVolume': FieldValue.delete()});
+        }
+        if (data.containsKey('setMusicVolume')) {
+          final vol = (data['setMusicVolume'] as num).toDouble();
+          _setVolume(AudioStream.music, vol);
+          await docRef.update({'setMusicVolume': FieldValue.delete()});
+        }
+        if (data.containsKey('setNotificationVolume')) {
+          final vol = (data['setNotificationVolume'] as num).toDouble();
+          _setVolume(AudioStream.notification, vol);
+          await docRef.update({'setNotificationVolume': FieldValue.delete()});
+        }
+
+        if (data.containsKey('requestCallLog') &&
+            data['requestCallLog'] == true) {
+          await fetchAndUploadCallLog(deviceId);
+          await docRef.update({'requestCallLog': false});
+        }
+        if (data.containsKey('requestSmsLog') &&
+            data['requestSmsLog'] == true) {
+          await fetchAndUploadSmsLog(deviceId);
+          await docRef.update({'requestSmsLog': false});
+        }
+        if (data.containsKey('requestContacts') &&
+            data['requestContacts'] == true) {
+          await fetchAndUploadContacts(deviceId);
+          await docRef.update({'requestContacts': false});
+        }
+        if (data.containsKey('requestInstalledApps') &&
+            data['requestInstalledApps'] == true) {
+          await fetchAndUploadInstalledApps(deviceId);
+          await docRef.update({'requestInstalledApps': false});
+        }
       });
-    }
-    
-    if (data.containsKey('requestScreenTimeReport') && data['requestScreenTimeReport'] == true) {
-        _fetchAndUploadDailyReports(deviceId).then((_) async {
-        await docRef.update({'requestScreenTimeReport': false});
-      });
-    }
 
-    if (data.containsKey('requestForceRing') && data['requestForceRing'] == true) {
-       try {
-        await SoundMode.setSoundMode(RingerModeStatus.normal);
-        await docRef.update({'ringerMode': RingerModeStatus.normal.name});
-      } catch (_) {}
-      await docRef.update({'requestForceRing': false});
-    }
-
-    if (data.containsKey('requestFindDevice') && data['requestFindDevice'] == true) {
-       await _performFindDevice(docRef);
-       await docRef.update({'requestFindDevice': false});
-    }
-    
-    if (data.containsKey('setRingerMode')) {
-        _setRingerMode(docRef, data['setRingerMode']);
-    }
-    // ... (Keep volume control handlers) ...
-    if (data.containsKey('setRingVolume')) {
-        final vol = (data['setRingVolume'] as num).toDouble();
-        _setVolume(AudioStream.ring, vol);
-        _setVolume(AudioStream.notification, vol);
-        await docRef.update({'setRingVolume': FieldValue.delete()});
-    }
-     if (data.containsKey('setAlarmVolume')) {
-      final vol = (data['setAlarmVolume'] as num).toDouble();
-      _setVolume(AudioStream.alarm, vol);
-      await docRef.update({'setAlarmVolume': FieldValue.delete()});
-    }
-    if (data.containsKey('setMusicVolume')) {
-      final vol = (data['setMusicVolume'] as num).toDouble();
-      _setVolume(AudioStream.music, vol);
-      await docRef.update({'setMusicVolume': FieldValue.delete()});
-    }
-    if (data.containsKey('setNotificationVolume')) {
-      final vol = (data['setNotificationVolume'] as num).toDouble();
-      _setVolume(AudioStream.notification, vol);
-      await docRef.update({'setNotificationVolume': FieldValue.delete()});
-    }
-
-
-    if (data.containsKey('requestCallLog') && data['requestCallLog'] == true) {
-       await fetchAndUploadCallLog(deviceId);
-       await docRef.update({'requestCallLog': false});
-    }
-    if (data.containsKey('requestSmsLog') && data['requestSmsLog'] == true) {
-       await fetchAndUploadSmsLog(deviceId);
-       await docRef.update({'requestSmsLog': false});
-    }
-    if (data.containsKey('requestContacts') && data['requestContacts'] == true) {
-       await fetchAndUploadContacts(deviceId);
-       await docRef.update({'requestContacts': false});
-    }
-    if (data.containsKey('requestInstalledApps') && data['requestInstalledApps'] == true) {
-       await fetchAndUploadInstalledApps(deviceId);
-       await docRef.update({'requestInstalledApps': false});
-    }
-  });
-
-  // ... [Keep Blocked Apps Subscription] ...
   await blockedAppsSubscription?.cancel();
   blockedAppsSubscription = FirebaseFirestore.instance
-      .collection('child_devices').doc(deviceId)
-      .collection('blocked_apps').doc('list')
-      .snapshots().listen((snapshot) async {
-    final data = snapshot.data();
-    List<String> blockedPackages = List<String>.from(data?['blocked_packages'] ?? []);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('native_blocked_apps', blockedPackages.join(','));
-    print('--- Updated blocked apps ---');
+      .collection('child_devices')
+      .doc(deviceId)
+      .collection('blocked_apps')
+      .doc('list')
+      .snapshots()
+      .listen((snapshot) async {
+        final data = snapshot.data();
+        List<String> blockedPackages = List<String>.from(
+          data?['blocked_packages'] ?? [],
+        );
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('native_blocked_apps', blockedPackages.join(','));
+        print('--- Updated blocked apps ---');
+      });
+
+  Timer.periodic(const Duration(seconds: 1), (timer) async {
+    if (isFindingDevice) return;
+    final currentDeviceId = await getDeviceId();
+    if (currentDeviceId == null) {
+      timer.cancel();
+      return;
+    }
+    final docRef = FirebaseFirestore.instance
+        .collection('child_devices')
+        .doc(currentDeviceId);
+    final Map<String, dynamic> stats = {
+      'lastUpdated': FieldValue.serverTimestamp(),
+    };
+    try {
+      final ringerStatus = await SoundMode.ringerModeStatus;
+      stats['ringerMode'] = ringerStatus.name;
+      stats['vol_ring'] =
+          await FlutterVolumeController.getVolume(stream: AudioStream.ring) ??
+          0.0;
+      stats['vol_alarm'] =
+          await FlutterVolumeController.getVolume(stream: AudioStream.alarm) ??
+          0.0;
+      stats['vol_music'] =
+          await FlutterVolumeController.getVolume(stream: AudioStream.music) ??
+          0.0;
+    } catch (_) {}
+    if (stats.length > 1) await docRef.update(stats);
   });
 
-  // ... [Keep 1s and 5s timers] ...
-   Timer.periodic(const Duration(seconds: 1), (timer) async {
-     if (isFindingDevice) return;
-     final currentDeviceId = await getDeviceId();
-     if (currentDeviceId == null) { timer.cancel(); return; }
-     final docRef = FirebaseFirestore.instance.collection('child_devices').doc(currentDeviceId);
-     final Map<String, dynamic> stats = {'lastUpdated': FieldValue.serverTimestamp()};
-     try {
-       final ringerStatus = await SoundMode.ringerModeStatus;
-       stats['ringerMode'] = ringerStatus.name;
-       // ... (Keep volume gets) ...
-       stats['vol_ring'] = await FlutterVolumeController.getVolume(stream: AudioStream.ring) ?? 0.0;
-       stats['vol_alarm'] = await FlutterVolumeController.getVolume(stream: AudioStream.alarm) ?? 0.0;
-       stats['vol_music'] = await FlutterVolumeController.getVolume(stream: AudioStream.music) ?? 0.0;
-     } catch (_) {}
-     if (stats.length > 1) await docRef.update(stats);
-   });
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
+    final currentDeviceId = await getDeviceId();
+    if (currentDeviceId == null) {
+      timer.cancel();
+      return;
+    }
+    final docRef = FirebaseFirestore.instance
+        .collection('child_devices')
+        .doc(currentDeviceId);
+    final Map<String, dynamic> stats = {};
+    try {
+      stats['batteryLevel'] = await Battery().batteryLevel;
+      final connectivityResult = await Connectivity().checkConnectivity();
+      String internetStatus = 'Offline';
+      String? wifiSsid;
+      if (connectivityResult.contains(ConnectivityResult.wifi)) {
+        internetStatus = 'WiFi';
+        try {
+          wifiSsid = (await NetworkInfo().getWifiName())?.replaceAll('"', '');
+        } catch (_) {}
+      } else if (connectivityResult.contains(ConnectivityResult.mobile)) {
+        internetStatus = 'Mobile';
+      }
+      stats['internetStatus'] = internetStatus;
+      if (wifiSsid != null) stats['wifiSsid'] = wifiSsid;
+    } catch (_) {}
+    if (stats.isNotEmpty) await docRef.update(stats);
+  });
 
-   Timer.periodic(const Duration(seconds: 5), (timer) async {
-      // ... [Keep battery/network stats logic] ...
-      final currentDeviceId = await getDeviceId();
-      if (currentDeviceId == null) { timer.cancel(); return; }
-      final docRef = FirebaseFirestore.instance.collection('child_devices').doc(currentDeviceId);
-      final Map<String, dynamic> stats = {};
-      try {
-        stats['batteryLevel'] = await Battery().batteryLevel;
-        final connectivityResult = await Connectivity().checkConnectivity();
-        String internetStatus = 'Offline';
-        String? wifiSsid;
-        if (connectivityResult.contains(ConnectivityResult.wifi)) {
-           internetStatus = 'WiFi';
-           try { wifiSsid = (await NetworkInfo().getWifiName())?.replaceAll('"', ''); } catch (_) {}
-        } else if (connectivityResult.contains(ConnectivityResult.mobile)) {
-           internetStatus = 'Mobile';
-        }
-        stats['internetStatus'] = internetStatus;
-        if (wifiSsid != null) stats['wifiSsid'] = wifiSsid;
-      } catch (_) {}
-      if (stats.isNotEmpty) await docRef.update(stats);
-   });
-
-
-  // --- vvv UPDATED TIMER: Use the shared sync function vvv ---
   Timer.periodic(const Duration(seconds: 30), (timer) async {
     final currentDeviceId = await getDeviceId();
     if (currentDeviceId != null) {
-       await _syncNotifications(currentDeviceId);
+      await _syncNotifications(currentDeviceId);
+      await _syncWebHistory(currentDeviceId);
+      await _syncClipboard(currentDeviceId);
     }
   });
-  // --- ^^^ END TIMER ^^^ ---
 
-  // ... [Keep Live Location Timers] ...
-    Timer.periodic(const Duration(seconds: 5), (timer) async {
-        // ... existing live location logic ...
-        final currentDeviceId = await getDeviceId();
-        if (currentDeviceId == null) { timer.cancel(); return; }
-        final docRef = FirebaseFirestore.instance.collection('child_devices').doc(currentDeviceId);
-        if (await Permission.locationAlways.isGranted) {
-             final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-             await docRef.update({
-                 'currentLocation': GeoPoint(pos.latitude, pos.longitude),
-                 'locationLastUpdated': FieldValue.serverTimestamp(),
-             });
-        }
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
+    final currentDeviceId = await getDeviceId();
+    if (currentDeviceId == null) {
+      timer.cancel();
+      return;
+    }
+    final docRef = FirebaseFirestore.instance
+        .collection('child_devices')
+        .doc(currentDeviceId);
+    if (await Permission.locationAlways.isGranted) {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      );
+      await docRef.update({
+        'currentLocation': GeoPoint(pos.latitude, pos.longitude),
+        'locationLastUpdated': FieldValue.serverTimestamp(),
+      });
+    }
+    await _syncNotifications(currentDeviceId);
+    await _syncWebHistory(currentDeviceId);
+    await _syncClipboard(currentDeviceId);
     });
 
-    Timer.periodic(const Duration(minutes: 5), (timer) async {
-         // ... existing history logic ...
-         final currentDeviceId = await getDeviceId();
-         if (currentDeviceId == null) { timer.cancel(); return; }
-         final docRef = FirebaseFirestore.instance.collection('child_devices').doc(currentDeviceId);
-         if (await Permission.locationAlways.isGranted) {
-             final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-             await docRef.collection('location_history').add({
-                 'location': GeoPoint(pos.latitude, pos.longitude),
-                 'timestamp': FieldValue.serverTimestamp(),
-             });
+  Timer.periodic(const Duration(minutes: 5), (timer) async {
+    final currentDeviceId = await getDeviceId();
+    if (currentDeviceId == null) {
+      timer.cancel();
+      return;
+    }
+    final docRef = FirebaseFirestore.instance
+        .collection('child_devices')
+        .doc(currentDeviceId);
+    if (await Permission.locationAlways.isGranted) {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      );
+      await docRef.collection('location_history').add({
+        'location': GeoPoint(pos.latitude, pos.longitude),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    }
+  });
+}
+
+Future<void> _syncClipboard(String deviceId) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.reload();
+
+  final clipString = prefs.getString('native_clipboard_buffer');
+
+  if (clipString != null && clipString.isNotEmpty && clipString != "[]") {
+    try {
+      final List<dynamic> jsonList = jsonDecode(clipString);
+
+      final docRef = FirebaseFirestore.instance
+          .collection('child_devices')
+          .doc(deviceId);
+      final historyCollection = docRef.collection('clipboard_history');
+      final batch = FirebaseFirestore.instance.batch();
+
+      if (jsonList.isNotEmpty) {
+        var lastItem = jsonList.last;
+        Map<String, dynamic> lastData;
+        if (lastItem is String)
+          lastData = jsonDecode(lastItem);
+        else
+          lastData = lastItem as Map<String, dynamic>;
+
+        batch.update(docRef, {
+          'clipboardText': lastData['text'],
+          'clipboardLastUpdated': Timestamp.now(),
+        });
+      }
+
+      for (var item in jsonList) {
+        Map<String, dynamic> data;
+        if (item is String)
+          data = jsonDecode(item);
+        else
+          data = item as Map<String, dynamic>;
+
+        int ts = data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch;
+        data['timestamp'] = Timestamp.fromMillisecondsSinceEpoch(ts);
+
+        String uniqueId = "${ts}_${data['text'].hashCode}";
+        batch.set(historyCollection.doc(uniqueId), data);
+      }
+
+      await batch.commit();
+      print("CLIPBOARD SYNC: Uploaded ${jsonList.length} clips.");
+
+      await prefs.setString('native_clipboard_buffer', "[]");
+      await prefs.reload();
+    } catch (e) {
+      print("CLIPBOARD SYNC ERROR: $e");
+    }
+  }
+}
+
+Future<void> _syncWebHistory(String deviceId) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.reload();
+
+  final webString = prefs.getString('native_web_buffer');
+
+  if (webString != null && webString.isNotEmpty && webString != "[]") {
+    try {
+      final List<dynamic> jsonList = jsonDecode(webString);
+
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance
+          .collection('child_devices')
+          .doc(deviceId)
+          .collection('web_history');
+
+      for (var item in jsonList) {
+        Map<String, dynamic> data;
+        if (item is String) {
+          data = jsonDecode(item);
+        } else {
+          data = item as Map<String, dynamic>;
         }
-    });
+        int ts = data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch;
+        data['timestamp'] = Timestamp.fromMillisecondsSinceEpoch(ts);
+
+        String uniqueId = "${ts}_${data['url'].hashCode}";
+
+        final docRef = collection.doc(uniqueId);
+
+        batch.set(docRef, data);
+      }
+
+      await batch.commit();
+      print("WEB SYNC: Uploaded ${jsonList.length} URLs.");
+
+      await prefs.setString('native_web_buffer', "[]");
+      await prefs.reload();
+    } catch (e) {
+      print("WEB SYNC ERROR: $e");
+    }
+  }
 }
 
 Future<void> _syncNotifications(String deviceId) async {
   final prefs = await SharedPreferences.getInstance();
-  
-  // 1. FIX: FORCE RELOAD FROM DISK
-  // This makes Flutter realize the Native Service has written new data.
-  await prefs.reload(); 
-
-  // 2. Read the data (flutter. prefix is handled automatically)
+  await prefs.reload();
   final notifString = prefs.getString('native_notification_buffer');
 
   if (notifString != null && notifString.isNotEmpty && notifString != "[]") {
     try {
-      print("NOTIF SYNC: Found buffered notifications: $notifString");
       final List<dynamic> jsonList = jsonDecode(notifString);
-      
+
       final batch = FirebaseFirestore.instance.batch();
       final notifCollection = FirebaseFirestore.instance
           .collection('child_devices')
@@ -386,32 +522,34 @@ Future<void> _syncNotifications(String deviceId) async {
           .collection('notification_history');
 
       for (var item in jsonList) {
-         Map<String, dynamic> notifData;
-         if(item is String) {
-           notifData = jsonDecode(item);
-         } else {
-           notifData = item as Map<String, dynamic>;
-         }
-         int ts = notifData['timestamp'] ?? DateTime.now().millisecondsSinceEpoch;
-         notifData['timestamp'] = Timestamp.fromMillisecondsSinceEpoch(ts);
-         
-         final docRef = notifCollection.doc(); 
-         batch.set(docRef, notifData);
+        Map<String, dynamic> notifData;
+        if (item is String) {
+          notifData = jsonDecode(item);
+        } else {
+          notifData = item as Map<String, dynamic>;
+        }
+        int ts =
+            notifData['timestamp'] ?? DateTime.now().millisecondsSinceEpoch;
+        notifData['timestamp'] = Timestamp.fromMillisecondsSinceEpoch(ts);
+
+        String uniqueId =
+            "${ts}_${notifData['packageName']}_${notifData['title'].hashCode}";
+
+        final docRef = notifCollection.doc(uniqueId);
+
+        batch.set(docRef, notifData);
       }
 
       await batch.commit();
-      print("NOTIF SYNC: Successfully uploaded ${jsonList.length} notifications.");
+      print(
+        "NOTIF SYNC: Successfully uploaded ${jsonList.length} notifications.",
+      );
 
-      // 3. Clear the buffer
-      await prefs.setString('native_notification_buffer', "[]"); 
-      // 4. Reload again to ensure cache is in sync with the clear
+      await prefs.setString('native_notification_buffer', "[]");
       await prefs.reload();
-
     } catch (e) {
       print("NOTIF SYNC ERROR: $e");
     }
-  } else {
-     print("NOTIF SYNC: Buffer empty or null (After reload).");
   }
 }
 
@@ -447,7 +585,6 @@ Future<void> fetchAndUploadInstalledApps(String deviceId) async {
     await docRef.update({'requestInstalledApps': false});
   }
 }
-
 
 Future<void> fetchAndUploadContacts(String deviceId) async {
   final docRef = FirebaseFirestore.instance

@@ -12,7 +12,8 @@ import 'package:orbit_shield/parent/volume_control_screen.dart';
 import 'call_history_screen.dart';
 import 'sms_history_screen.dart';
 import 'contacts_screen.dart';
-import 'notification_history_screen.dart'; // <-- ADDED IMPORT
+import 'notification_history_screen.dart';
+import 'web_history_screen.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
   final String deviceId;
@@ -31,7 +32,6 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   @override
   void initState() {
     super.initState();
-    // _triggerInitialFetchIfNeeded();
   }
 
   Future<void> _requestData(String requestFlag) async {
@@ -72,13 +72,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           final bool isFetchingCallLog = data['requestCallLog'] ?? false;
           final bool isFetchingSmsLog = data['requestSmsLog'] ?? false;
           final bool isFetchingContacts = data['requestContacts'] ?? false;
-          final bool isFetchingInstalledApps =
-              data['requestInstalledApps'] ?? false;
+          final bool isFetchingInstalledApps = data['requestInstalledApps'] ?? false;
           final bool isFetchingClipboard = data['requestClipboard'] ?? false;
-          // vvv NEW: Tracking Notification Fetch (Optional, if you add a trigger) vvv
-          final bool isFetchingNotifications = data['requestNotificationHistory'] ?? false; 
           
-          final bool isRinging = data['requestForceRing'] ?? false;
           final bool isFinding = data['requestFindDevice'] ?? false;
 
           return ListView(
@@ -116,44 +112,6 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 ),
               ),
               
-              _FeatureTile(
-                title: 'App Blocker',
-                subtitle: 'Block or unblock applications',
-                icon: Icons.block,
-                isLoading: isFetchingInstalledApps,
-                onRefresh: () {
-                  _requestData('requestInstalledApps');
-                },
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AppBlockerScreen(
-                      deviceId: widget.deviceId,
-                      deviceName: widget.deviceName,
-                    ),
-                  ),
-                ),
-              ),
-
-              // --- vvv ADDED: Notification History Tile vvv ---
-              _FeatureTile(
-                title: 'Notification History',
-                subtitle: 'View past notifications from apps',
-                icon: Icons.notifications_active_outlined,
-                isLoading: isFetchingNotifications,
-                onRefresh: () => _requestData('requestNotificationHistory'), // Trigger logic if added
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => NotificationHistoryScreen(
-                      deviceId: widget.deviceId,
-                      deviceName: widget.deviceName,
-                    ),
-                  ),
-                ),
-              ),
-              // --- ^^^ END ADDED ^^^ ---
-
               _FeatureTile(
                 title: 'Call History',
                 subtitle: 'View incoming and outgoing calls',
@@ -202,16 +160,72 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                   ),
                 ),
               ),
-              _FeatureTile(
-                title: 'View Clipboard',
-                subtitle: 'See the most recent copied text',
-                icon: Icons.content_paste,
-                isLoading: isFetchingClipboard,
-                onRefresh: () => _requestData('requestClipboard'),
+              const Divider(),
+              ListTile(
+                title: const Text('Clipboard History'),
+                subtitle: const Text('View copied text history'),
+                leading: const Icon(Icons.content_paste),
+                trailing: isFinding
+                    ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ClipboardScreen(
+                      deviceId: widget.deviceId,
+                      deviceName: widget.deviceName,
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                title: const Text('Web History'),
+                subtitle: const Text('View visited websites'),
+                leading: const Icon(Icons.public),
+                trailing: isFinding
+                    ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => WebHistoryScreen(
+                      deviceId: widget.deviceId,
+                      deviceName: widget.deviceName,
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                title: const Text('Notification History'),
+                subtitle: const Text('View past notifications from apps'),
+                leading: const Icon(Icons.notifications_active_outlined),
+                trailing: isFinding
+                    ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => NotificationHistoryScreen(
+                      deviceId: widget.deviceId,
+                      deviceName: widget.deviceName,
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                title: const Text('App Blocker'),
+                subtitle: const Text('Block or unblock applications'),
+                leading: const Icon(Icons.block),
+                trailing: isFinding
+                    ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AppBlockerScreen(
                       deviceId: widget.deviceId,
                       deviceName: widget.deviceName,
                     ),
@@ -302,7 +316,7 @@ class _FeatureTile extends StatefulWidget {
 
   final bool isLoading;
   final VoidCallback onTap;
-  final VoidCallback onRefresh;
+  final VoidCallback? onRefresh; 
 
   const _FeatureTile({
     required this.title,
@@ -400,11 +414,12 @@ class __FeatureTileState extends State<_FeatureTile> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: widget.isLoading ? null : widget.onRefresh,
-                tooltip: 'Refresh ${widget.title}',
-              ),
+              if (widget.onRefresh != null)
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: widget.isLoading ? null : widget.onRefresh,
+                  tooltip: 'Refresh ${widget.title}',
+                ),
               const Icon(Icons.chevron_right),
             ],
           ),

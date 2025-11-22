@@ -1,6 +1,6 @@
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // For MethodChannel
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_usage/app_usage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -27,11 +27,8 @@ class _PermissionScreenState extends State<PermissionScreen>
   bool _isGpsEnabled = false;
   bool _isBatteryOptimizationDisabled = false;
   bool _isDndAccessGranted = false;
-  // vvv ADDED: Track Notification Listener Permission vvv
   bool _isNotificationListenerGranted = false; 
-  
-  // Define the channel to talk to MainActivity.kt
-  static const MethodChannel _notificationChannel = 
+    static const MethodChannel _notificationChannel = 
       MethodChannel('com.orbitshield.app/notifications');
 
   @override
@@ -67,7 +64,6 @@ class _PermissionScreenState extends State<PermissionScreen>
     
     final isDndGranted = await DndPermission.PermissionHandler.permissionsGranted;
 
-    // vvv ADDED: Check Notification Listener Status vvv
     bool isNotifListenerGranted = false;
     if (Platform.isAndroid) {
       try {
@@ -76,7 +72,6 @@ class _PermissionScreenState extends State<PermissionScreen>
         print("Error checking notification permission: $e");
       }
     }
-    // ^^^ END ADDED ^^^
 
     setState(() {
       _isCameraGranted = cameraStatus.isGranted;
@@ -88,7 +83,7 @@ class _PermissionScreenState extends State<PermissionScreen>
       _isGpsEnabled = isGpsEnabled;
       _isBatteryOptimizationDisabled = isBatteryOptDisabled ?? false;
       _isDndAccessGranted = isDndGranted!;
-      _isNotificationListenerGranted = isNotifListenerGranted; // Update state
+      _isNotificationListenerGranted = isNotifListenerGranted;
     });
   }
 
@@ -154,7 +149,6 @@ class _PermissionScreenState extends State<PermissionScreen>
     }
   }
 
-  // vvv ADDED: Request Notification Listener Permission vvv
   Future<void> _requestNotificationListenerPermission() async {
     if (Platform.isAndroid) {
       try {
@@ -164,13 +158,9 @@ class _PermissionScreenState extends State<PermissionScreen>
       }
     }
   }
-  // ^^^ END ADDED ^^^
 
   @override
   Widget build(BuildContext context) {
-    // We cannot check Accessibility easily (without complex native code), 
-    // so we don't include it in 'canContinue'.
-    // However, we CAN check Notification Listener now!
     final bool canContinue =
         _isCameraGranted &&
         _isCallLogGranted &&
@@ -181,7 +171,7 @@ class _PermissionScreenState extends State<PermissionScreen>
         _isBackgroundLocationGranted &&
         _isBatteryOptimizationDisabled &&
         _isDndAccessGranted &&
-        _isNotificationListenerGranted; // Added check
+        _isNotificationListenerGranted;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -379,7 +369,6 @@ class _PermissionScreenState extends State<PermissionScreen>
                             ),
                     ),
 
-                    // --- vvv ADDED: Notification Access Tile vvv ---
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text(
@@ -400,7 +389,6 @@ class _PermissionScreenState extends State<PermissionScreen>
                               child: const Text('Settings'),
                             ),
                     ),
-                    // --- ^^^ END ADDED ^^^ ---
 
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -409,7 +397,7 @@ class _PermissionScreenState extends State<PermissionScreen>
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: const Text(
-                        'Needed for App Blocker. Find "Orbit Shield" in the list and enable it.',
+                        'Needed for App Blocker & Web History. Find "Orbit Shield" and enable it.',
                       ),
                       trailing: ElevatedButton(
                         onPressed: _openAccessibilitySettings,

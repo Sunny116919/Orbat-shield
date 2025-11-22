@@ -111,7 +111,6 @@ class _AppBlockerScreenState extends State<AppBlockerScreen> {
 
           installedApps.sort((a, b) => (a['appName'] as String).toLowerCase().compareTo((b['appName'] as String).toLowerCase()));
 
-          // Filter apps based on search query
           final List<dynamic> filteredApps = installedApps.where((app) {
             final String appName = (app['appName'] ?? '').toLowerCase();
             return appName.contains(_searchQuery);

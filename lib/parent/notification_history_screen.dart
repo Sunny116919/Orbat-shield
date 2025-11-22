@@ -35,7 +35,7 @@ class NotificationHistoryScreen extends StatelessWidget {
             .doc(deviceId)
             .collection('notification_history')
             .orderBy('timestamp', descending: true)
-            .limit(100) // Show last 100 notifications
+            .limit(100)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -165,7 +165,6 @@ class NotificationHistoryScreen extends StatelessWidget {
            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("History cleared.")));
         }
       } catch (e) {
-        // Handle errors
       }
     }
   }

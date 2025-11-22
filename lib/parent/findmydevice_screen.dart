@@ -26,7 +26,6 @@ class _FindMyDeviceScreenState extends State<FindMyDeviceScreen> {
         .doc(widget.deviceId);
   }
 
-  /// Sends the request to the child's device to start ringing.
   void _requestFindDevice() {
     try {
       _docRef.update({'requestFindDevice': true});
@@ -52,7 +51,6 @@ class _FindMyDeviceScreenState extends State<FindMyDeviceScreen> {
           bool isFinding = false;
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-            // Check the flag from Firestore
             isFinding = data['requestFindDevice'] ?? false;
           }
 
@@ -77,7 +75,7 @@ class _FindMyDeviceScreenState extends State<FindMyDeviceScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'This will make the child\'s device ring at full volume for 10 seconds, even if it is on silent.',
+                  'This will make the child\'s device ring at full volume for 15 seconds, even if it is on silent.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Colors.grey[600],
