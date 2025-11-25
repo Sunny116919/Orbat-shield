@@ -12,9 +12,7 @@ class AppBlockerService : AccessibilityService() {
     // Declare the managers
     private lateinit var appBlockerManager: AppBlockerManager
     private lateinit var webHistoryManager: WebHistoryManager
-    // vvv NEW: Declare Clipboard Manager vvv
     private lateinit var clipboardMonitorManager: ClipboardMonitorManager 
-    // ^^^ END NEW ^^^
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -22,15 +20,18 @@ class AppBlockerService : AccessibilityService() {
         // 1. Initialize Managers
         appBlockerManager = AppBlockerManager(this)
         webHistoryManager = WebHistoryManager(this)
-        // vvv NEW: Initialize Clipboard Manager vvv
         clipboardMonitorManager = ClipboardMonitorManager(this)
-        // ^^^ END NEW ^^^
 
         // 2. Configure Accessibility Info
         val info = AccessibilityServiceInfo()
         
-        // CRITICAL CHANGE: We now listen for BOTH State changes (for Blocking) AND Content changes (for URLs)
-        info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        // vvv UPDATED: Added CLICKED and TEXT_SELECTION events vvv
+        // This ensures the service catches copy actions instantly
+        info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or 
+                          AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                          AccessibilityEvent.TYPE_VIEW_CLICKED or 
+                          AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED
+        // ^^^ END UPDATED ^^^
         
         info.flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                      AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
@@ -43,41 +44,45 @@ class AppBlockerService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
-        // Log.d(TAG, "Event from Package: $packageName") // Uncomment for debugging
-
+        
         // --- Logic 1: App Blocker ---
-        // Usually, blocking happens when a new window state occurs (App opens)
+        // Only check blocking when the window state changes (new app opens)
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // Update list ensures we are always in sync with SharedPreferences
             appBlockerManager.updateBlockedList()
             
             if (appBlockerManager.shouldBlockApp(packageName)) {
                 Log.d(TAG, "BLOCKED: $packageName")
                 performGlobalAction(GLOBAL_ACTION_HOME)
-                return // Exit immediately. Do not try to read URLs if the app is blocked.
+                return // Exit immediately if blocked
             }
         }
 
-        // --- Logic 2: Clipboard Monitor (NEW) ---
-        // We check this on every event. It is very lightweight (just checks a string string vs string).
-        // This ensures we catch the copy event almost instantly even if the app is in background/locked.
+        // --- Logic 2: Clipboard Monitor ---
+        // Check constantly. The manager handles logic to avoid duplicates.
+        // This runs on Clicks/Selection too now, capturing "Copy" button presses.
         try {
             clipboardMonitorManager.checkClipboard()
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking clipboard: ${e.message}")
+            // Log.e(TAG, "Error checking clipboard: ${e.message}")
         }
 
         // --- Logic 3: Web History ---
-        // We pass the event to the manager. It checks internally if the app is a browser.
-        // We pass 'rootInActiveWindow' to allow scanning the screen for the URL bar.
         try {
             webHistoryManager.processEvent(packageName, rootInActiveWindow)
         } catch (e: Exception) {
-            Log.e(TAG, "Error processing web history: ${e.message}")
+            // Log.e(TAG, "Error processing web history: ${e.message}")
         }
     }
 
     override fun onInterrupt() {
         Log.e(TAG, "Service Interrupted")
+    }
+
+    // vvv NEW: Clean up the native clipboard listener when service stops vvv
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            clipboardMonitorManager.cleanup()
+        } catch (e: Exception) {}
     }
 }
